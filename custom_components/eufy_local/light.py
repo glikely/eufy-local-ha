@@ -16,12 +16,12 @@ from homeassistant.components.light import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import CONNECTION_BLUETOOTH, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .ble import EufyBLEController, EufyBLEError
+from .ble import EufyBLEController, EufyBLEError, EufyState
 from .const import CONF_SERIAL_NUMBER, DEVICE_MANUFACTURER, DOMAIN
 
 SCAN_INTERVAL = timedelta(seconds=30)
@@ -42,6 +42,34 @@ try:
 except (OSError, ValueError):
     _LOGGER.exception("Could not load effects.json; effects disabled")
     PRESETS = {}
+
+
+def _cloud_id(preset: dict[str, str]) -> int | None:
+    """The eufy app's id for a preset, as the light reports it back in a6.
+
+    Animations (0x020D) carry it in a3, solid presets (0x0206) in ac.
+    """
+    tail = bytes.fromhex(preset["tail"])
+    tag = 0xA3 if preset["opcode"].lower() == "020d" else 0xAC
+    index = 0
+    while index + 2 <= len(tail):
+        length = tail[index + 1]
+        if tail[index] == tag:
+            return int.from_bytes(tail[index + 2 : index + 2 + length], "little")
+        index += 2 + length
+    return None
+
+
+# Reverse index, so the preset the light says it is running can be shown by
+# name even when it was started from the eufy app.
+PRESETS_BY_CLOUD_ID: dict[int, str] = {}
+for _name, _preset in PRESETS.items():
+    try:
+        _id = _cloud_id(_preset)
+    except (KeyError, ValueError):
+        continue
+    if _id:
+        PRESETS_BY_CLOUD_ID[_id] = _name
 
 
 async def async_setup_entry(
@@ -87,11 +115,31 @@ class EufyLocalLight(LightEntity):
             sw_version="Local encrypted BLE",
         )
 
+    async def async_added_to_hass(self) -> None:
+        self.async_on_remove(self.controller.async_subscribe(self._handle_report))
+
+    @callback
+    def _handle_report(self, state: EufyState) -> None:
+        self._apply_state(state)
+        self.async_write_ha_state()
+
+    def _apply_state(self, state: EufyState) -> None:
+        # Power, brightness and the running preset are read back from the light.
+        # Colour stays optimistic: the light doesn't report a usable palette.
+        self._attr_available = True
+        if state.is_on is not None:
+            self._attr_is_on = state.is_on
+        if state.brightness is not None:
+            self._attr_brightness = round(state.brightness * 255 / 100)
+        if state.cloud_id is not None:
+            self._attr_effect = PRESETS_BY_CLOUD_ID.get(state.cloud_id)
+
     async def async_update(self) -> None:
-        self._attr_available = (
-            self.controller.connected
-            or await self.controller.async_device_visible()
-        )
+        try:
+            self._apply_state(await self.controller.async_request_status())
+        except EufyBLEError as exc:
+            _LOGGER.debug("Could not read the light's state: %s", exc)
+            self._attr_available = await self.controller.async_device_visible()
 
     async def async_turn_on(self, **kwargs) -> None:
         brightness = kwargs.get(ATTR_BRIGHTNESS)
