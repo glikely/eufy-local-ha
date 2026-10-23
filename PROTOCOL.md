@@ -151,7 +151,7 @@ a6 06 01 <R> <G> <B> <WarmWhite> <CoolWhite>
     first.
 
 Captured preset frames are shipped in
-`custom_components/eufy_local_ha/effects.json` as `{opcode, tail}`, where
+`custom_components/eufy_local/effects.json` as `{opcode, tail}`, where
 `tail` is everything after the `a1`/`a2` envelope; the integration prepends a
 fresh envelope and replays them.
 
