@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import json
 import logging
+from pathlib import Path
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
+    ATTR_EFFECT,
     ATTR_RGB_COLOR,
     ATTR_RGBWW_COLOR,
     ColorMode,
     LightEntity,
+    LightEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS
@@ -28,6 +32,17 @@ _LOGGER = logging.getLogger(__name__)
 # gamma/white-balance correction in EufyBLEController.
 RGBWW_SERIAL_PREFIXES = ("T8L02",)
 
+# The eufy app's own named presets, captured off a real E22 over its cloud link
+# and replayed verbatim over Bluetooth. Each value is {opcode, tail}: the opcode
+# (0x0206 solid or 0x020D animation) and the frame body after the a1/a2 envelope.
+try:
+    PRESETS: dict[str, dict[str, str]] = json.loads(
+        (Path(__file__).parent / "effects.json").read_text()
+    )
+except (OSError, ValueError):
+    _LOGGER.exception("Could not load effects.json; effects disabled")
+    PRESETS = {}
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -40,6 +55,9 @@ async def async_setup_entry(
 class EufyLocalLight(LightEntity):
     _attr_has_entity_name = True
     _attr_name = None
+    _attr_supported_features = LightEntityFeature.EFFECT
+    _attr_effect_list = sorted(PRESETS)
+    _attr_effect = None
     _attr_should_poll = True
     _attr_is_on = False
     _attr_brightness = 255
@@ -77,6 +95,7 @@ class EufyLocalLight(LightEntity):
 
     async def async_turn_on(self, **kwargs) -> None:
         brightness = kwargs.get(ATTR_BRIGHTNESS)
+        effect = kwargs.get(ATTR_EFFECT)
         brightness_percent = None
         color = None
 
@@ -93,6 +112,27 @@ class EufyLocalLight(LightEntity):
             if rgb is not None:
                 color = tuple(int(channel) for channel in rgb)
 
+        # A named preset drives its own pattern across the strip, so it replaces
+        # a solid-colour write rather than running alongside one.
+        if effect is not None and effect in PRESETS:
+            preset = PRESETS[effect]
+            try:
+                await self.controller.async_set_preset(
+                    int(preset["opcode"], 16),
+                    bytes.fromhex(preset["tail"]),
+                    brightness=brightness_percent,
+                )
+            except EufyBLEError as exc:
+                self._attr_available = False
+                raise HomeAssistantError(f"Failed to set effect: {exc}") from exc
+            self._attr_is_on = True
+            self._attr_available = True
+            self._attr_effect = effect
+            if brightness is not None:
+                self._attr_brightness = brightness
+            return
+
+        self._attr_effect = None
         try:
             await self.controller.async_set_state(
                 is_on=True,
