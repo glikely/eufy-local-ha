@@ -13,7 +13,7 @@ And i took that personally.
 ## Requirements
 
 - Home Assistant :)
-- Your light's Bluetooth MAC, serial number, and Eufy user ID (see [Configuration](#configuration))
+- A Bluetooth adapter or proxy within range of the light. The serial number and Eufy user ID are only needed if automatic setup fails (see [Configuration](#configuration))
 
 ## Installation
 
@@ -29,15 +29,21 @@ Copy `custom_components/eufy_local` into your Home Assistant `config/custom_comp
 
 ## Configuration
 
-Add the integration via Settings > Devices & services > Add integration > Eufy Local Light (it should also be auto discovered over Bluetooth). You will be asked for three values:
+The light should be discovered over Bluetooth automatically: it shows up under Settings > Devices & services as a discovered Eufy Local Light, and setting it up is a single confirmation. Close the Eufy app first, since the light only accepts one Bluetooth connection at a time.
+
+During setup Home Assistant connects to the light, reads its serial number (the light reports it in the handshake), and checks that it accepts a connection without an Eufy account (the E22 does). It only asks for a user ID if the light refuses.
+
+If the light isn't discovered, add it by hand via Settings > Devices & services > Add integration > Eufy Local Light:
 
 | Field | What it is | Where to find it |
 | --- | --- | --- |
-| Bluetooth MAC | The light's BLE address | should be auto-filled on discovery depending of what model you have but you could also use a BLE scanner like nRF Connect. |
-| Serial number | 16-character device serial | On the device label and in the Eufy app device info. |
-| User ID | Your Eufy account user ID (hex) | The account that paired the light. |
+| Bluetooth MAC | The light's BLE address | A BLE scanner like nRF Connect. |
+| Serial number | 16-character device serial | Optional: read from the light if left blank. Also on the device label and in the Eufy app device info. |
+| User ID | Your Eufy account user ID (hex) | Optional: only needed if the light refuses setup without one. The account that paired the light. |
 
 ### Finding your User ID
+
+Only needed if the light won't set up without it.
 
 - Read it from the Eufy Security account API (for example via the community [`eufy-sdk`](https://github.com/mega-yfue/eufy-sdk) project), or
 - Capture the app's HTTPS or BLE handshake traffic once and read the `user_id` field.
