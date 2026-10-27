@@ -13,6 +13,7 @@ from homeassistant.data_entry_flow import FlowResult
 from .ble import EufyBLEController, EufyBLEError, async_read_device_info
 from .const import (
     CONF_ACHROMATIC_RATIO,
+    CONF_FIRMWARE,
     CONF_GAMMA,
     CONF_SATURATION,
     CONF_SERIAL_NUMBER,
@@ -49,6 +50,7 @@ class EufyLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._discovered_address: str | None = None
         self._discovered_name: str | None = None
         self._serial: str | None = None
+        self._firmware: str | None = None
         self._probed = False
 
     async def async_step_bluetooth(
@@ -152,6 +154,7 @@ class EufyLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         except EufyBLEError:
             return "cannot_connect"
         self._serial = info.serial_number
+        self._firmware = info.firmware
         self._probed = True
         return None
 
@@ -184,6 +187,8 @@ class EufyLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_SERIAL_NUMBER: self._serial,
             CONF_USER_ID: user_id,
         }
+        if self._firmware:
+            data[CONF_FIRMWARE] = self._firmware
         return self.async_create_entry(
             title=self._discovered_name or DEFAULT_DEVICE_NAME, data=data
         )
