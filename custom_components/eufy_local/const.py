@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 DOMAIN = "eufy_local"
-PLATFORMS = ["light", "sensor"]
+PLATFORMS = ["light", "sensor", "switch"]
 
 CONF_SERIAL_NUMBER = "serial_number"
 CONF_USER_ID = "user_id"
