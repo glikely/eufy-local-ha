@@ -2,19 +2,32 @@
   "config": {
     "flow_title": "{name}",
     "step": {
+      "bluetooth_confirm": {
+        "title": "Eufy Local Light",
+        "description": "Set up {name}? Home Assistant will connect to the light to read its serial number. Close the Eufy app first: the light accepts only one Bluetooth connection at a time."
+      },
       "user": {
         "title": "Eufy Local Light",
-        "description": "Enter the Bluetooth address and credentials. See the README for how to find your serial number and user ID.",
+        "description": "Enter the light's Bluetooth address. The serial number is read from the light and the user ID can be left blank; fill them in only if setup fails without them. See the README for how to find them.",
         "data": {
           "address": "Bluetooth MAC address",
-          "serial_number": "Device serial number (16 characters)",
+          "serial_number": "Device serial number (16 characters, optional)",
+          "user_id": "Eufy account user ID (optional)"
+        }
+      },
+      "user_id": {
+        "title": "Eufy account user ID",
+        "description": "The light didn't accept setup without an account. Enter your Eufy user ID (see the README).",
+        "data": {
           "user_id": "Eufy account user ID"
         }
       }
     },
     "error": {
       "invalid_serial": "The serial number must be exactly 16 characters.",
-      "invalid_user_id": "The user ID must be at least 16 characters."
+      "invalid_user_id": "The user ID must be at least 16 characters.",
+      "cannot_connect": "Couldn't connect to the light. Make sure it is powered and in range, and close the Eufy app, which can hold the light's only Bluetooth connection.",
+      "handshake_failed": "The light refused the connection. Check the user ID."
     },
     "abort": {
       "already_configured": "This light is already configured."
