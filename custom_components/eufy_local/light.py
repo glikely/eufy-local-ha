@@ -83,6 +83,7 @@ async def async_setup_entry(
 class EufyLocalLight(LightEntity):
     _attr_has_entity_name = True
     _attr_name = None
+    _attr_icon = "mdi:string-lights"
     _attr_supported_features = LightEntityFeature.EFFECT
     _attr_effect_list = sorted(PRESETS)
     _attr_effect = None
