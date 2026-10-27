@@ -50,6 +50,47 @@ class EufyState:
     cloud_id: int | None = None
 
 
+def _tlvs(body: bytes) -> dict[int, bytes]:
+    fields: dict[int, bytes] = {}
+    index = 0
+    while index + 2 <= len(body):
+        tag, length = body[index], body[index + 1]
+        value = body[index + 2 : index + 2 + length]
+        if len(value) != length:
+            break
+        fields[tag] = value
+        index += 2 + length
+    return fields
+
+
+def _checksum(data: bytes) -> bytes:
+    value = 0
+    for byte in data:
+        value ^= byte
+    return bytes([value])
+
+
+def _frame(seq: int, type_value: int, opcode: int, payload: bytes) -> bytes:
+    packet = (
+        bytes.fromhex("ff09")
+        + struct.pack("<H", len(payload) + 10)
+        + struct.pack("<H", seq)
+        + bytes([type_value])
+        + struct.pack(">H", opcode)
+        + payload
+    )
+    return packet + _checksum(packet)
+
+
+def _envelope(user_id: str) -> bytes:
+    return (
+        bytes.fromhex("a104")
+        + struct.pack("<I", int(time.time()))
+        + bytes.fromhex("a228")
+        + user_id.encode("ascii")
+    )
+
+
 def _parse_state(body: bytes, previous: EufyState) -> EufyState:
     """Merge the TLVs of a state report or status reply into previous.
 
@@ -57,15 +98,10 @@ def _parse_state(body: bytes, previous: EufyState) -> EufyState:
     always the same widths (a3/a4 are 1 and 4 bytes in the report, 2 and 2 in
     the reply), so numbers are read little-endian at whatever length is given.
     """
-    fields: dict[int, int] = {}
-    index = 0
-    while index + 2 <= len(body):
-        tag, length = body[index], body[index + 1]
-        value = body[index + 2 : index + 2 + length]
-        if len(value) != length:
-            break
-        fields[tag] = int.from_bytes(value, "little") if length <= 4 else 0
-        index += 2 + length
+    fields = {
+        tag: int.from_bytes(value, "little") if len(value) <= 4 else 0
+        for tag, value in _tlvs(body).items()
+    }
     state = previous
     if 0xA1 in fields:
         state = replace(state, is_on=fields[0xA1] != 0)
@@ -154,25 +190,13 @@ class EufyBLEController:
             raise EufyBLEError("Invalid PKCS#7 padding")
         return data[:-length]
 
-    @staticmethod
-    def _checksum(data: bytes) -> bytes:
-        value = 0
-        for byte in data:
-            value ^= byte
-        return bytes([value])
-
     def _next_seq(self) -> int:
         value = self.seq
         self.seq = 1 if self.seq >= 0xFFFF else self.seq + 1
         return value
 
     def _base_payload(self) -> bytes:
-        return (
-            bytes.fromhex("a104")
-            + struct.pack("<I", int(time.time()))
-            + bytes.fromhex("a228")
-            + self.uid.encode("ascii")
-        )
+        return _envelope(self.uid)
 
     def _packet(
         self,
@@ -187,15 +211,7 @@ class EufyBLEController:
             payload = AES.new(key, AES.MODE_CBC, iv=self.sn).encrypt(self._pad(payload))
             opcode |= 0x4000
 
-        packet = (
-            bytes.fromhex("ff09")
-            + struct.pack("<H", len(payload) + 10)
-            + struct.pack("<H", self._next_seq())
-            + bytes([type_value])
-            + struct.pack(">H", opcode)
-            + payload
-        )
-        return packet + self._checksum(packet)
+        return _frame(self._next_seq(), type_value, opcode, payload)
 
     def _on_disconnect(self, _client: BleakClient) -> None:
         self.session_key = None
