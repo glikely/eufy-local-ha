@@ -24,12 +24,14 @@ from .const import (
     DEFAULT_WHITE_BALANCE_B,
     DEFAULT_WHITE_BALANCE_G,
     DEFAULT_WHITE_BALANCE_R,
+    DEFAULT_USER_ID,
 )
 
 _LOGGER = logging.getLogger(__name__)
 HANDSHAKE_STEP_DELAY = 0.15
 POWER_TO_COLOR_DELAY = 0.5
 STATUS_TIMEOUT = 3.0
+INFO_TIMEOUT = 6.0
 
 # 0x0200 is a getter: its a3 field is a bitmask of the state fields wanted
 # (bit 0 power, 1 brightness, 2 segments, 3 effect, ...); all ones asks for
@@ -48,6 +50,15 @@ class EufyState:
     # The eufy app's id for the preset or scene that is running; 0 for a
     # colour set outside the app's preset list.
     cloud_id: int | None = None
+
+
+@dataclass(frozen=True)
+class EufyDeviceInfo:
+    """What the light says about itself during the handshake."""
+
+    serial_number: str
+    model: str | None = None
+    firmware: str | None = None
 
 
 def _tlvs(body: bytes) -> dict[int, bytes]:
@@ -118,6 +129,69 @@ def _parse_state(body: bytes, previous: EufyState) -> EufyState:
 
 class EufyBLEError(Exception):
     """BLE transport or protocol error."""
+
+
+async def async_read_device_info(
+    hass: HomeAssistant, address: str
+) -> EufyDeviceInfo:
+    """Read the light's serial number, model and firmware.
+
+    The light answers the second, unencrypted handshake step (0x0029) with
+    0x0829: a status byte, then plain TLVs carrying the model (a2), firmware
+    (a3) and serial number (a4). Nothing here needs a key, so this works
+    before setup.
+    """
+    device = bluetooth.async_ble_device_from_address(hass, address, connectable=True)
+    if device is None:
+        raise EufyBLEError("Light not found or connectable")
+
+    reply: asyncio.Future[bytes] = asyncio.get_running_loop().create_future()
+
+    def notification(_sender: Any, data: bytearray) -> None:
+        raw = bytes(data)
+        if len(raw) >= 10 and raw[7:9] == bytes.fromhex("0829") and not reply.done():
+            reply.set_result(raw[9:-1])
+
+    try:
+        client = await establish_connection(
+            BleakClientWithServiceCache,
+            device,
+            name=address,
+            max_attempts=4,
+            use_services_cache=True,
+            timeout=20.0,
+        )
+    except Exception as exc:
+        raise EufyBLEError(f"Unable to connect: {exc}") from exc
+    try:
+        await client.start_notify(CHAR_NOTIFY, notification)
+        envelope = _envelope(DEFAULT_USER_ID)
+        for seq, opcode in ((1, 0x0001), (2, 0x0029)):
+            await client.write_gatt_char(
+                CHAR_WRITE, _frame(seq, 1, opcode, envelope), response=False
+            )
+            await asyncio.sleep(HANDSHAKE_STEP_DELAY)
+        body = await asyncio.wait_for(reply, timeout=INFO_TIMEOUT)
+    except Exception as exc:
+        raise EufyBLEError(f"No device info from the light: {exc}") from exc
+    finally:
+        with contextlib.suppress(Exception):
+            await client.disconnect()
+
+    _LOGGER.debug("Device info reply: %s", body.hex())
+    if body[:1] != b"\x00":
+        raise EufyBLEError(f"Light reported status {body[:1].hex()}")
+    fields = _tlvs(body[1:])
+    serial = fields.get(0xA4, b"").decode("ascii", "replace")
+    if len(serial) != 16:
+        raise EufyBLEError("Light did not report a serial number")
+    model = fields.get(0xA2)
+    firmware = fields.get(0xA3)
+    return EufyDeviceInfo(
+        serial_number=serial,
+        model=model.decode("ascii", "replace") if model else None,
+        firmware=firmware.decode("ascii", "replace") if firmware else None,
+    )
 
 
 class EufyBLEController:

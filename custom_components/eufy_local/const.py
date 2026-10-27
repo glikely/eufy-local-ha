@@ -7,6 +7,10 @@ PLATFORMS = ["light"]
 CONF_SERIAL_NUMBER = "serial_number"
 CONF_USER_ID = "user_id"
 
+# The E22 accepts an all-zero user id in the handshake, so setup needs no
+# eufy account; a real id can still be entered for lights that refuse it.
+DEFAULT_USER_ID = "0" * 40
+
 CONF_GAMMA = "color_gamma"
 CONF_SATURATION = "color_saturation"
 CONF_ACHROMATIC_RATIO = "achromatic_ratio"
