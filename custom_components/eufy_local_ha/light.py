@@ -18,7 +18,7 @@ from homeassistant.helpers.device_registry import CONNECTION_BLUETOOTH, DeviceIn
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .ble import EufyBLEController, EufyBLEError, EufyState
-from .const import CONF_SERIAL_NUMBER, DEVICE_MANUFACTURER, DOMAIN
+from .const import CONF_FIRMWARE, CONF_SERIAL_NUMBER, DEVICE_MANUFACTURER, DOMAIN
 
 SCAN_INTERVAL = timedelta(seconds=30)
 _LOGGER = logging.getLogger(__name__)
@@ -67,7 +67,7 @@ class EufyLocalLight(LightEntity):
             name=entry.title,
             manufacturer=DEVICE_MANUFACTURER,
             serial_number=serial,
-            sw_version="Local encrypted BLE",
+            sw_version=entry.data.get(CONF_FIRMWARE, "Local encrypted BLE"),
         )
 
     async def async_added_to_hass(self) -> None:

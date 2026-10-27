@@ -6,6 +6,7 @@ PLATFORMS = ["light"]
 
 CONF_SERIAL_NUMBER = "serial_number"
 CONF_USER_ID = "user_id"
+CONF_FIRMWARE = "firmware"
 
 # The E22 accepts an all-zero user id in the handshake, so setup needs no
 # eufy account; a real id can still be entered for lights that refuse it.
