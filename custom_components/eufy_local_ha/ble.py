@@ -464,21 +464,23 @@ class EufyBLEController:
                 self._status_reply = None
         return self.state
 
-    async def async_set_power_effect(self, enabled: bool) -> EufyState:
-        """Turn the rainbow sweep the controller plays on power on/off on or off.
+    async def _async_set_setting(self, field: bytes) -> EufyState:
+        """Write one controller setting on 0x0201 and read the state back.
 
-        It is a controller setting on 0x0201 (a7: 00 on, 01 off); the light
-        pushes no report for it, so read it back with a status query.
+        The light pushes no report for these settings, so the new value is
+        read back with a status query.
         """
         async with self.command_lock:
             for attempt in range(2):
                 try:
                     await self.async_ensure_connected()
-                    payload = self._base_payload() + bytes.fromhex("a701") + (
-                        bytes([0x00]) if enabled else bytes([0x01])
-                    )
                     await self._write(
-                        self._packet(0x0201, payload, encrypted=True, type_value=2)
+                        self._packet(
+                            0x0201,
+                            self._base_payload() + field,
+                            encrypted=True,
+                            type_value=2,
+                        )
                     )
                     break
                 except EufyBLEError:
@@ -490,6 +492,15 @@ class EufyBLEController:
                     if attempt == 1:
                         raise EufyBLEError(str(exc)) from exc
         return await self.async_request_status()
+
+    async def async_set_power_effect(self, enabled: bool) -> EufyState:
+        """Turn the rainbow sweep the controller plays on power on/off on or off.
+
+        It is a controller setting on 0x0201 (a7: 00 on, 01 off).
+        """
+        return await self._async_set_setting(
+            bytes.fromhex("a701") + (bytes([0x00]) if enabled else bytes([0x01]))
+        )
 
     async def async_set_wifi(self, ssid: str, password: str) -> bool | None:
         """Point the controller at a Wi-Fi network, as the eufy app does.
