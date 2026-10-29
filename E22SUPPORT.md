@@ -13,6 +13,8 @@ Home Assistant shows the light's real power, brightness and running preset, not 
 
 A **Power on/off effect** switch controls the rainbow sweep the controller plays whenever the lights are switched on or off (the same setting the Eufy app has).
 
+A **Set blockout** action (`eufy_local.set_blockout`) holds chosen lights on the string permanently off, whatever scene or colour is showing, like the Eufy app's blockout. Lights are numbered from 1 at the controller end; an empty list lights them all again. The light's `blockout` attribute shows which lights are held off, including any set from the Eufy app.
+
 A **Set Wi-Fi network** action (`eufy_local.set_wifi`) sends the light a new Wi-Fi network and password over Bluetooth, the same command the Eufy app uses during setup. Anyone listening nearby can recover the password from the Bluetooth traffic (see [`PROTOCOL.md`](PROTOCOL.md)), as they could when the app does it.
 
 A diagnostic **Lights** sensor shows how many lights the controller detected on the string. The controller probes the string each time it powers up, so the count follows any lights you add or remove.
