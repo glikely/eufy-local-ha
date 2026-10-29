@@ -13,6 +13,8 @@ Home Assistant shows the light's real power, brightness and running preset, not 
 
 A **Power on/off effect** switch controls the rainbow sweep the controller plays whenever the lights are switched on or off (the same setting the Eufy app has).
 
+A **Set Wi-Fi network** action (`eufy_local.set_wifi`) sends the light a new Wi-Fi network and password over Bluetooth, the same command the Eufy app uses during setup. Anyone listening nearby can recover the password from the Bluetooth traffic (see [`PROTOCOL.md`](PROTOCOL.md)), as they could when the app does it.
+
 A diagnostic **Lights** sensor shows how many lights the controller detected on the string. The controller probes the string each time it powers up, so the count follows any lights you add or remove.
 
 To do this the integration keeps its Bluetooth connection open, reconnecting on the next poll if it drops. The light accepts only one Bluetooth connection, so while Home Assistant holds it the Eufy app can only reach the light over Wi-Fi/cloud.
