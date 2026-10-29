@@ -5,7 +5,7 @@ import contextlib
 import logging
 import struct
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -32,6 +32,8 @@ HANDSHAKE_STEP_DELAY = 0.15
 POWER_TO_COLOR_DELAY = 0.5
 STATUS_TIMEOUT = 3.0
 INFO_TIMEOUT = 6.0
+# The blockout mask is three bytes, one bit per light.
+BLOCKOUT_LIGHTS = 24
 # The light confirms a Wi-Fi write 7 to 11 s after it, not straight away.
 WIFI_REPLY_TIMEOUT = 30.0
 
@@ -500,6 +502,24 @@ class EufyBLEController:
         """
         return await self._async_set_setting(
             bytes.fromhex("a701") + (bytes([0x00]) if enabled else bytes([0x01]))
+        )
+
+    async def async_set_blockout(self, lights: Iterable[int]) -> EufyState:
+        """Hold the given lights permanently off ("blockout" in the eufy app).
+
+        Lights are numbered from 1 at the controller end. The controller
+        keeps them as a 24-bit mask in 0x0201's a6, least significant byte
+        first, with bit n holding light n + 1 off; an empty set clears it.
+        """
+        mask = 0
+        for light in lights:
+            if not 1 <= light <= BLOCKOUT_LIGHTS:
+                raise EufyBLEError(
+                    f"Light numbers must be 1 to {BLOCKOUT_LIGHTS}, not {light}"
+                )
+            mask |= 1 << (light - 1)
+        return await self._async_set_setting(
+            bytes([0xA6, 3]) + mask.to_bytes(3, "little")
         )
 
     async def async_set_wifi(self, ssid: str, password: str) -> bool | None:

@@ -24,12 +24,13 @@ from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.device_registry import CONNECTION_BLUETOOTH, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .ble import EufyBLEController, EufyBLEError, EufyState
+from .ble import BLOCKOUT_LIGHTS, EufyBLEController, EufyBLEError, EufyState
 from .const import (
     CONF_FIRMWARE,
     CONF_SERIAL_NUMBER,
     DEVICE_MANUFACTURER,
     DOMAIN,
+    SERVICE_SET_BLOCKOUT,
     SERVICE_SET_WIFI,
 )
 
@@ -88,7 +89,18 @@ async def async_setup_entry(
 ) -> None:
     async_add_entities([EufyLocalLight(entry)], update_before_add=True)
 
-    entity_platform.async_get_current_platform().async_register_entity_service(
+    platform = entity_platform.async_get_current_platform()
+    platform.async_register_entity_service(
+        SERVICE_SET_BLOCKOUT,
+        {
+            vol.Optional("lights", default=[]): vol.All(
+                cv.ensure_list,
+                [vol.All(vol.Coerce(int), vol.Range(min=1, max=BLOCKOUT_LIGHTS))],
+            ),
+        },
+        "async_set_blockout",
+    )
+    platform.async_register_entity_service(
         SERVICE_SET_WIFI,
         {
             vol.Required("ssid"): cv.string,
@@ -219,6 +231,14 @@ class EufyLocalLight(LightEntity):
                 self._attr_rgbww_color = color
             else:
                 self._attr_rgb_color = color
+
+    async def async_set_blockout(self, lights: list[int]) -> None:
+        """Hold the given lights permanently off (the set_blockout action)."""
+        try:
+            self._apply_state(await self.controller.async_set_blockout(lights))
+        except EufyBLEError as exc:
+            raise HomeAssistantError(f"Failed to set blockout: {exc}") from exc
+        self.async_write_ha_state()
 
     async def async_set_wifi(self, ssid: str, password: str) -> None:
         """Send the light a new Wi-Fi network (the set_wifi action)."""

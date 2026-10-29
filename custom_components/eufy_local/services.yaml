@@ -12,6 +12,50 @@ set_brightness:
           step: 1
           mode: slider
 
+set_blockout:
+  name: Set blockout
+  description: >-
+    Hold chosen lights on the string permanently off, whatever scene or colour
+    is showing (the eufy app's blockout). Lights are numbered from 1 at the
+    controller end. Leave the list empty to light every bulb again.
+  target:
+    entity:
+      integration: eufy_local
+      domain: light
+  fields:
+    lights:
+      name: Lights to hold off
+      required: false
+      example: "[1, 2, 3, 4]"
+      selector:
+        select:
+          multiple: true
+          options:
+            - "1"
+            - "2"
+            - "3"
+            - "4"
+            - "5"
+            - "6"
+            - "7"
+            - "8"
+            - "9"
+            - "10"
+            - "11"
+            - "12"
+            - "13"
+            - "14"
+            - "15"
+            - "16"
+            - "17"
+            - "18"
+            - "19"
+            - "20"
+            - "21"
+            - "22"
+            - "23"
+            - "24"
+
 set_wifi:
   name: Set Wi-Fi network
   description: >-

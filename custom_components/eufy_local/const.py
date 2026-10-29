@@ -35,3 +35,4 @@ LOCAL_NAME_PREFIX = "T8L10"
 
 SERVICE_SET_BRIGHTNESS = "set_brightness"
 SERVICE_SET_WIFI = "set_wifi"
+SERVICE_SET_BLOCKOUT = "set_blockout"
