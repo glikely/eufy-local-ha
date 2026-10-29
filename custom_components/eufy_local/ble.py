@@ -57,6 +57,9 @@ class EufyState:
     # Whether the controller plays its rainbow sweep when the lights are
     # switched on and off. Only the 0x0A00 status reply carries it.
     power_effect: bool | None = None
+    # Lights held permanently off ("blockout"), numbered from 1 at the
+    # controller end. Only the 0x0A00 status reply carries it.
+    blockout: tuple[int, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -136,6 +139,16 @@ def _parse_state(body: bytes, previous: EufyState) -> EufyState:
     # off); a pushed 0x0204 report can carry an unrelated 12-byte a9.
     if len(tlvs.get(0xA9, b"")) == 1:
         state = replace(state, power_effect=tlvs[0xA9] == b"\x00")
+    # In the status reply a7 is the blockout mask, 16 bytes little-endian
+    # with bit n for light n + 1; in a pushed 0x0204 report it is one byte.
+    if len(tlvs.get(0xA7, b"")) == 16:
+        mask = int.from_bytes(tlvs[0xA7], "little")
+        state = replace(
+            state,
+            blockout=tuple(
+                light + 1 for light in range(mask.bit_length()) if mask >> light & 1
+            ),
+        )
     return state
 
 

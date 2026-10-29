@@ -164,6 +164,8 @@ class EufyLocalLight(LightEntity):
             self._attr_brightness = round(state.brightness * 255 / 100)
         if state.cloud_id is not None:
             self._attr_effect = PRESETS_BY_CLOUD_ID.get(state.cloud_id)
+        if state.blockout is not None:
+            self._attr_extra_state_attributes = {"blockout": list(state.blockout)}
 
     async def async_update(self) -> None:
         try:
