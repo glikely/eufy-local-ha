@@ -403,6 +403,43 @@ The palette itself is not reported, so a colour set by `0x0206` can only be
 tracked optimistically. Each command is also acked with `0x0A01`/`0x0A06`/
 `0x0A0D` carrying a status byte.
 
+### Wi-Fi network — `0x0032`
+
+The eufy app sets the controller's Wi-Fi network over Bluetooth, after the
+usual handshake. Captured from the app on an iPhone (Apple's Bluetooth
+logging profile, then a sysdiagnose's `bluetoothd-hci-*.pklg`), changing the
+network to a WPA2 one:
+
+```
+type 2, encrypted with the session key
+base + a3 <n> <SSID>
+     + a4 01 00
+     + a5 01 00
+     + a6 <n> <password>
+```
+
+The SSID and password are plain bytes, not padded or terminated. `a4` and
+`a5` were both `00`; they are probably the security type and a hidden-network
+flag, but a capture of another kind of network would be needed to tell.
+
+The light answers with `0x0832` carrying a status byte, `00` when it accepts
+the network. The reply comes 7 to 11 seconds after the write, not
+immediately (measured on an E22: about 7 s re-sending the network it was
+on, about 11 s moving it to a different one).
+What a non-zero status means is not yet known.
+
+While its Wi-Fi screen is open the app also sends `0x0026` with no fields
+(type 1, encrypted) every 10 seconds, which the light acks with `0x0826`,
+status `00`: a keepalive.
+
+The app's `0x0022` key request carries `a3 04 00 00 00 00` rather than
+`e0 e3 ff ff`; the light hands out a session key either way.
+
+**This exposes the Wi-Fi password to anyone listening.** The initial key is
+the first 16 characters of the user id, which the handshake sends in clear
+text in `a2`, and the session key comes back encrypted under it. Anyone who
+records a setup can decrypt the password from the recording.
+
 ### Device-specific values (example)
 
 | Field | Value |
