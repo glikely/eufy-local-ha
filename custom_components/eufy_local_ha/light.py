@@ -5,6 +5,8 @@ import json
 import logging
 from pathlib import Path
 
+import voluptuous as vol
+
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_EFFECT,
@@ -18,11 +20,18 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.device_registry import CONNECTION_BLUETOOTH, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .ble import EufyBLEController, EufyBLEError, EufyState
-from .const import CONF_FIRMWARE, CONF_SERIAL_NUMBER, DEVICE_MANUFACTURER, DOMAIN
+from .const import (
+    CONF_FIRMWARE,
+    CONF_SERIAL_NUMBER,
+    DEVICE_MANUFACTURER,
+    DOMAIN,
+    SERVICE_SET_WIFI,
+)
 
 SCAN_INTERVAL = timedelta(seconds=30)
 _LOGGER = logging.getLogger(__name__)
@@ -78,6 +87,15 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     async_add_entities([EufyLocalLight(entry)], update_before_add=True)
+
+    entity_platform.async_get_current_platform().async_register_entity_service(
+        SERVICE_SET_WIFI,
+        {
+            vol.Required("ssid"): cv.string,
+            vol.Optional("password", default=""): cv.string,
+        },
+        "async_set_wifi",
+    )
 
 
 class EufyLocalLight(LightEntity):
@@ -201,6 +219,19 @@ class EufyLocalLight(LightEntity):
                 self._attr_rgbww_color = color
             else:
                 self._attr_rgb_color = color
+
+    async def async_set_wifi(self, ssid: str, password: str) -> None:
+        """Send the light a new Wi-Fi network (the set_wifi action)."""
+        try:
+            acknowledged = await self.controller.async_set_wifi(ssid, password)
+        except EufyBLEError as exc:
+            raise HomeAssistantError(f"Failed to set Wi-Fi: {exc}") from exc
+        if acknowledged is None:
+            _LOGGER.info(
+                "Sent Wi-Fi network %s to %s; the light did not confirm it",
+                ssid,
+                self.entity_id,
+            )
 
     async def async_turn_off(self, **kwargs) -> None:
         try:

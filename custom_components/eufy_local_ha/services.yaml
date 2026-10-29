@@ -11,3 +11,27 @@ set_brightness:
           max: 100
           step: 1
           mode: slider
+
+set_wifi:
+  name: Set Wi-Fi network
+  description: >-
+    Send the light the Wi-Fi network to join, over Bluetooth, as the eufy app
+    does during setup. The password crosses Bluetooth protected only by keys
+    anyone listening can recover, so do this out of range of others.
+  target:
+    entity:
+      integration: eufy_local
+      domain: light
+  fields:
+    ssid:
+      name: Network name
+      required: true
+      example: My network
+      selector:
+        text:
+    password:
+      name: Password
+      required: false
+      selector:
+        text:
+          type: password

@@ -32,6 +32,8 @@ HANDSHAKE_STEP_DELAY = 0.15
 POWER_TO_COLOR_DELAY = 0.5
 STATUS_TIMEOUT = 3.0
 INFO_TIMEOUT = 6.0
+# The light confirms a Wi-Fi write 7 to 11 s after it, not straight away.
+WIFI_REPLY_TIMEOUT = 30.0
 
 # 0x0200 is a getter: its a3 field is a bitmask of the state fields wanted
 # (bit 0 power, 1 brightness, 2 segments, 3 effect, ...); all ones asks for
@@ -239,6 +241,7 @@ class EufyBLEController:
         self.connect_lock = asyncio.Lock()
         self.state = EufyState()
         self._status_reply: asyncio.Future[None] | None = None
+        self._wifi_reply: asyncio.Future[int] | None = None
         self._listeners: list[Callable[[EufyState], None]] = []
 
         if len(self.sn) != 16:
@@ -324,7 +327,7 @@ class EufyBLEController:
         opcode = struct.unpack(">H", raw[7:9])[0]
         if opcode == 0x4822:
             self._handshake_reply(raw)
-        elif opcode in (0x4204, 0x4A00) and self.session_key is not None:
+        elif opcode in (0x4204, 0x4A00, 0x4832) and self.session_key is not None:
             try:
                 plaintext = self._unpad(
                     AES.new(self.session_key, AES.MODE_CBC, iv=self.sn).decrypt(
@@ -337,6 +340,10 @@ class EufyBLEController:
             if opcode == 0x4204:
                 # Pushed after every change: bare TLVs.
                 self._update_state(plaintext)
+            elif opcode == 0x4832:
+                # Reply to a 0x0032 Wi-Fi write: a status byte (0 = ok).
+                if self._wifi_reply and not self._wifi_reply.done():
+                    self._wifi_reply.set_result(plaintext[0] if plaintext else 0)
             else:
                 # Reply to a 0x0200 query: a status byte (0 = ok), then TLVs.
                 if plaintext[:1] == b"\x00":
@@ -483,6 +490,59 @@ class EufyBLEController:
                     if attempt == 1:
                         raise EufyBLEError(str(exc)) from exc
         return await self.async_request_status()
+
+    async def async_set_wifi(self, ssid: str, password: str) -> bool | None:
+        """Point the controller at a Wi-Fi network, as the eufy app does.
+
+        0x0032 carries the SSID in a3 and the password in a6, both as plain
+        bytes inside the session encryption. a4 and a5 are single bytes the
+        app sent as 00 when joining a WPA2 network; their meaning is unknown.
+
+        The light answers with 0x0832 and a status byte (0 = ok) 7 to 11 s
+        later. Returns True on status 0, or None if no reply came in time,
+        which is logged rather than treated as a failure since the write may
+        still have taken. Raises EufyBLEError on any other status.
+        """
+        ssid_bytes = ssid.encode("utf-8")
+        password_bytes = password.encode("utf-8")
+        if not 1 <= len(ssid_bytes) <= 32:
+            raise EufyBLEError("The SSID must be 1 to 32 bytes")
+        if len(password_bytes) > 64:
+            raise EufyBLEError("The password must be at most 64 bytes")
+
+        payload = (
+            self._base_payload()
+            + bytes([0xA3, len(ssid_bytes)])
+            + ssid_bytes
+            + bytes.fromhex("a40100a50100")
+            + bytes([0xA6, len(password_bytes)])
+            + password_bytes
+        )
+        async with self.command_lock:
+            try:
+                await self.async_ensure_connected()
+                self._wifi_reply = asyncio.get_running_loop().create_future()
+                await self._write(
+                    self._packet(0x0032, payload, encrypted=True, type_value=2)
+                )
+                status = await asyncio.wait_for(
+                    self._wifi_reply, timeout=WIFI_REPLY_TIMEOUT
+                )
+            except TimeoutError:
+                # Never log the password; the SSID is enough to tell writes apart.
+                _LOGGER.debug("No reply to the Wi-Fi write for %s", ssid)
+                return None
+            except EufyBLEError:
+                await self.async_disconnect()
+                raise
+            except Exception as exc:
+                await self.async_disconnect()
+                raise EufyBLEError(f"Wi-Fi write failed: {exc}") from exc
+            finally:
+                self._wifi_reply = None
+        if status != 0:
+            raise EufyBLEError(f"The light rejected the Wi-Fi settings ({status})")
+        return True
 
     async def _send_power(self, is_on: bool, base_payload: bytes) -> None:
         payload = base_payload + bytes.fromhex("a301") + (
